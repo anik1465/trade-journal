@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Journal — Hougaard Method</title>
+
+<!-- Firebase Compat SDK (works in plain HTML, no bundler needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #fafaf8; --bg2: #f2f1ee; --bg3: #e8e7e3;
+  --surface: #ffffff; --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18);
+  --text: #1a1a18; --text2: #5a5a55; --text3: #9a9a94;
+  --green: #0F6E56; --green-bg: #E1F5EE;
+  --red: #993C1D; --red-bg: #FAECE7;
+  --amber: #854F0B; --amber-bg: #FAEEDA;
+  --radius: 10px; --radius-sm: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a18; --bg2: #222220; --bg3: #2c2c2a;
+    --surface: #242422; --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+    --text: #f0f0ec; --text2: #a0a09a; --text3: #606058;
+    --green: #5DCAA5; --green-bg: #085041;
+    --red: #F09975; --red-bg: #4A1B0C;
+    --amber: #EF9F27; --amber-bg: #412402;
+  }
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+header { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
+header h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+header p { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.date-badge { font-size: 12px; color: var(--text2); background: var(--bg2); padding: 4px 12px; border-radius: 20px; border: 0.5px solid var(--border); }
+/* Firebase status indicator */
+.fb-status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text3); }
+.fb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); transition: background 0.3s; }
+.fb-dot.connected { background: var(--green); }
+.fb-dot.error { background: var(--red); }
+.container { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem; }
+.tabs { display: flex; gap: 2px; background: var(--bg2); border-radius: var(--radius); padding: 4px; margin-bottom: 2rem; }
+.tab { flex: 1; padding: 8px; border: none; background: none; color: var(--text2); font-size: 13px; cursor: pointer; border-radius: var(--radius-sm); font-weight: 500; transition: all 0.15s; }
+.tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.section { display: none; }
+.section.active { display: block; }
+.card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+.card-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--text3); text-transform: uppercase; margin-bottom: 1rem; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; font-weight: 600; color: var(--text2); letter-spacing: 0.03em; }
+input, select, textarea { font-family: inherit; font-size: 14px; background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; color: var(--text); width: 100%; outline: none; transition: border-color 0.15s; }
+input:focus, select:focus, textarea:focus { border-color: var(--border2); background: var(--bg); }
+textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+.radio-group { display: flex; gap: 6px; }
+.radio-btn { flex: 1; padding: 8px 6px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; cursor: pointer; background: var(--bg2); color: var(--text2); text-align: center; font-weight: 500; transition: all 0.15s; font-family: inherit; }
+.radio-btn.selected { border-color: var(--border2); background: var(--surface); color: var(--text); }
+.mood-group { display: flex; gap: 6px; }
+.mood-btn { flex: 1; padding: 10px 6px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-size: 20px; cursor: pointer; background: var(--bg2); text-align: center; transition: all 0.15s; font-family: inherit; }
+.mood-btn.selected { border-color: var(--border2); background: var(--surface); }
+.rule-box { background: var(--amber-bg); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 1rem; font-size: 13px; color: var(--amber); line-height: 1.5; }
+.save-btn { width: 100%; padding: 11px; background: var(--text); color: var(--bg); border: none; border-radius: var(--radius); font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 1rem; font-family: inherit; transition: opacity 0.15s; }
+.save-btn:hover { opacity: 0.82; }
+.save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.trade-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 10px; }
+.trade-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.trade-ticker { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+.pnl { font-size: 18px; font-weight: 700; }
+.pnl.pos { color: var(--green); }
+.pnl.neg { color: var(--red); }
+.trade-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.meta { font-size: 12px; color: var(--text2); }
+.meta span { color: var(--text); font-weight: 500; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+.badge.win { background: var(--green-bg); color: var(--green); }
+.badge.loss { background: var(--red-bg); color: var(--red); }
+.badge.plan-yes { background: var(--green-bg); color: var(--green); }
+.badge.plan-no { background: var(--red-bg); color: var(--red); }
+.badge.plan-partial { background: var(--amber-bg); color: var(--amber); }
+.trade-note { font-size: 13px; color: var(--text2); margin-top: 8px; line-height: 1.5; padding-top: 8px; border-top: 0.5px solid var(--border); }
+.delete-btn { background: none; border: none; cursor: pointer; color: var(--text3); font-size: 18px; padding: 0 4px; line-height: 1; font-family: inherit; }
+.delete-btn:hover { color: var(--red); }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 1.5rem; }
+.stat-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; }
+.stat-label { font-size: 11px; color: var(--text2); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 6px; }
+.stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.stat-value.pos { color: var(--green); }
+.stat-value.neg { color: var(--red); }
+.empty-state { text-align: center; padding: 3rem 2rem; color: var(--text3); font-size: 14px; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); }
+.empty-state p { margin-top: 8px; font-size: 13px; }
+.filter-bar { display: flex; gap: 8px; margin-bottom: 1rem; }
+.filter-bar input { flex: 1; }
+.filter-bar select { width: 140px; }
+.export-btn { padding: 8px 16px; background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; color: var(--text); font-family: inherit; font-weight: 500; }
+.export-btn:hover { background: var(--bg3); }
+.streak-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.streak-dot { width: 10px; height: 10px; border-radius: 50%; }
+.streak-dot.win { background: var(--green); }
+.streak-dot.loss { background: var(--red); }
+.streak-dot.empty { background: var(--bg3); }
+@media (max-width: 600px) {
+  .grid2, .grid3, .grid4 { grid-template-columns: 1fr; }
+  header { padding: 1rem; }
+  .container { padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Trade Journal</h1>
+    <p>Hougaard Method — Best Loser Wins</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div class="fb-status">
+      <div class="fb-dot" id="fb-dot"></div>
+      <span id="fb-label">Connecting…</span>
+    </div>
+    <div class="date-badge" id="header-date"></div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('log', this)">Log trade</button>
+    <button class="tab" onclick="switchTab('history', this)">History</button>
+    <button class="tab" onclick="switchTab('stats', this)">Stats</button>
+    <button class="tab" onclick="switchTab('prep', this)">Pre-market</button>
+  </div>
+
+  <!-- LOG TRADE -->
+  <div id="log" class="section active">
+    <div class="rule-box">&#9650; Hougaard's rule: Never risk more than 1% per trade. Your stop is final — no moving it, no negotiating. Cut losses short, let winners run.</div>
+    <div class="card">
+      <div class="card-title">Trade details</div>
+      <div class="grid3" style="margin-bottom:12px">
+        <div class="field"><label>Ticker</label><input type="text" id="ticker" placeholder="AAPL" oninput="this.value=this.value.toUpperCase()"></div>
+        <div class="field"><label>Date</label><input type="date" id="date"></div>
+        <div class="field"><label>Time entered</label><input type="time" id="time"></div>
+      </div>
+      <div class="grid4" style="margin-bottom:12px">
+        <div class="field"><label>Entry ($)</label><input type="number" id="entry" placeholder="0.00" step="0.01"></div>
+        <div class="field"><label>Exit ($)</label><input type="number" id="exit" placeholder="0.00" step="0.01"></div>
+        <div class="field"><label>Shares</label><input type="number" id="shares" placeholder="100"></div>
+        <div class="field"><label>Stop loss ($)</label><input type="number" id="stop" placeholder="0.00" step="0.01"></div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>Direction</label>
+          <div class="radio-group">
+            <button class="radio-btn selected" id="dir-long" onclick="selectDir('long')">Long</button>
+            <button class="radio-btn" id="dir-short" onclick="selectDir('short')">Short</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Setup type</label>
+          <select id="setup">
+            <option value="">Select setup...</option>
+            <option>Pullback to 9 EMA</option>
+            <option>Breakout of premarket high</option>
+            <option>Breakout of prev day high</option>
+            <option>Support bounce</option>
+            <option>Resistance break</option>
+            <option>Opening range breakout</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Psychology check</div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Pre-trade mood</label>
+        <div class="mood-group">
+          <button class="mood-btn selected" id="mood-calm" onclick="selectMood('calm')" title="Calm">😐</button>
+          <button class="mood-btn" id="mood-confident" onclick="selectMood('confident')" title="Confident">😊</button>
+          <button class="mood-btn" id="mood-fomo" onclick="selectMood('fomo')" title="FOMO / chasing">😤</button>
+          <button class="mood-btn" id="mood-revenge" onclick="selectMood('revenge')" title="Revenge trading">😠</button>
+          <button class="mood-btn" id="mood-anxious" onclick="selectMood('anxious')" title="Anxious / uncertain">😰</button>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Did you follow your plan?</label>
+        <div class="radio-group">
+          <button class="radio-btn selected" id="plan-yes" onclick="selectPlan('yes')">Yes</button>
+          <button class="radio-btn" id="plan-partial" onclick="selectPlan('partial')">Partial</button>
+          <button class="radio-btn" id="plan-no" onclick="selectPlan('no')">Broke plan</button>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label>Why did you enter this trade?</label>
+        <textarea id="reason" placeholder="Pulled back to 9 EMA after breaking premarket high with strong volume..."></textarea>
+      </div>
+      <div class="field">
+        <label>Post-trade notes — what did you learn?</label>
+        <textarea id="notes" placeholder="Your journal is a mirror, not a scoreboard. What behavior are you refining?"></textarea>
+      </div>
+    </div>
+    <button class="save-btn" id="save-trade-btn" onclick="saveTrade()">Save trade</button>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="history" class="section">
+    <div class="filter-bar">
+      <input type="text" id="search" placeholder="Search by ticker..." oninput="renderHistory()">
+      <select id="filter-plan" onchange="renderHistory()">
+        <option value="">All plans</option>
+        <option value="yes">Followed plan</option>
+        <option value="partial">Partial</option>
+        <option value="no">Broke plan</option>
+      </select>
+      <button class="export-btn" onclick="exportCSV()">Export CSV</button>
+    </div>
+    <div id="trade-list"></div>
+  </div>
+
+  <!-- STATS -->
+  <div id="stats" class="section">
+    <div class="stat-grid" id="stat-grid"></div>
+    <div class="card">
+      <div class="card-title">Recent 20 trades</div>
+      <div class="streak-bar" id="streak-bar"></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <div class="card-title">Hougaard benchmark</div>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6">Hougaard targets a hit ratio of 85%+ with small, controlled losses and uncapped winners. Track your plan adherence rate alongside win rate — a low plan adherence with high win rate is a ticking time bomb.</p>
+    </div>
+    <div id="setup-breakdown" class="card" style="margin-top:1rem;display:none">
+      <div class="card-title">Win rate by setup</div>
+      <div id="setup-table"></div>
+    </div>
+  </div>
+
+  <!-- PRE-MARKET PREP -->
+  <div id="prep" class="section">
+    <div class="rule-box">&#9650; Hougaard's routine: Begin long before the open. Mark levels, rehearse scenarios mentally. Preparation removes emotional reactivity when it matters most.</div>
+    <div class="card">
+      <div class="card-title">Today's prep — <span id="prep-date"></span></div>
+      <div class="grid2" style="margin-bottom:12px">
+        <div class="field">
+          <label>Market bias</label>
+          <div class="radio-group">
+            <button class="radio-btn selected" id="bias-bull" onclick="selectBias('bull')">Bullish</button>
+            <button class="radio-btn" id="bias-bear" onclick="selectBias('bear')">Bearish</button>
+            <button class="radio-btn" id="bias-neutral" onclick="selectBias('neutral')">Neutral</button>
+          </div>
+        </div>
+        <div class="field"><label>Max loss today ($) — stop trading if hit</label><input type="number" id="maxloss" placeholder="e.g. 200"></div>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>Watchlist (tickers to watch)</label>
+        <input type="text" id="watchlist" placeholder="AAPL, MSFT, NVDA, IREN...">
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>Key levels and notes</label>
+        <textarea id="levels" placeholder="SPY resistance at 520, NVDA premarket high at 118.50..."></textarea>
+      </div>
+      <div class="field">
+        <label>Mental state check — how are you feeling?</label>
+        <textarea id="mental" placeholder="Hougaard steps away after a loss — revenge trading is your biggest enemy..."></textarea>
+      </div>
+    </div>
+    <button class="save-btn" id="save-prep-btn" onclick="savePrep()">Save today's prep</button>
+    <div id="saved-prep" style="margin-top:1rem"></div>
+  </div>
+</div>
+
+<script>
+// ─── Firebase config ──────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyAj0I_CZEJFQ8pqFLozZZzHuUTnL_llruw",
+  authDomain: "trade-journal-b73cd.firebaseapp.com",
+  databaseURL: "https://trade-journal-b73cd-default-rtdb.firebaseio.com",
+  projectId: "trade-journal-b73cd",
+  storageBucket: "trade-journal-b73cd.firebasestorage.app",
+  messagingSenderId: "81128621579",
+  appId: "1:81128621579:web:9c7dfbc61b1086cbe2a90e",
+  measurementId: "G-Q3PDSEVLCY"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ─── Connection status indicator ─────────────────────────────────────────────
+const connectedRef = db.ref('.info/connected');
+connectedRef.on('value', snap => {
+  const dot = document.getElementById('fb-dot');
+  const label = document.getElementById('fb-label');
+  if (snap.val()) {
+    dot.className = 'fb-dot connected';
+    label.textContent = 'Firebase connected';
+  } else {
+    dot.className = 'fb-dot error';
+    label.textContent = 'Offline';
+  }
+});
+
+// ─── Local mirrors (kept in sync by onValue listeners) ───────────────────────
+let trades = [];   // Array of { firebaseKey, ...tradeData }
+let preps  = {};   // { "YYYY-MM-DD": prepData }
+
+// Listen for trades — real-time sync
+db.ref('trades').on('value', snap => {
+  trades = [];
+  snap.forEach(child => {
+    trades.push({ firebaseKey: child.key, ...child.val() });
+  });
+  // Refresh whichever tab is visible
+  renderHistory();
+  renderStats();
+});
+
+// Listen for preps — real-time sync
+db.ref('preps').on('value', snap => {
+  preps = snap.val() || {};
+  renderPrep();
+});
+
+// ─── UI state ─────────────────────────────────────────────────────────────────
+let direction   = 'long';
+let planFollowed = 'yes';
+let mood        = 'calm';
+let bias        = 'bull';
+
+// ─── Date / time defaults ─────────────────────────────────────────────────────
+const today = new Date();
+document.getElementById('header-date').textContent =
+  today.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+document.getElementById('date').value = today.toISOString().split('T')[0];
+document.getElementById('prep-date').textContent =
+  today.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+document.getElementById('time').value = today.toTimeString().slice(0,5);
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tab).classList.add('active');
+}
+
+// ─── Radio / mood helpers ─────────────────────────────────────────────────────
+function selectDir(d) {
+  direction = d;
+  ['long','short'].forEach(x => document.getElementById('dir-'+x).classList.toggle('selected', x===d));
+}
+function selectPlan(p) {
+  planFollowed = p;
+  ['yes','partial','no'].forEach(x => document.getElementById('plan-'+x).classList.toggle('selected', x===p));
+}
+function selectMood(m) {
+  mood = m;
+  ['calm','confident','fomo','revenge','anxious'].forEach(x => document.getElementById('mood-'+x).classList.toggle('selected', x===m));
+}
+function selectBias(b) {
+  bias = b;
+  ['bull','bear','neutral'].forEach(x => document.getElementById('bias-'+x).classList.toggle('selected', x===b));
+}
+
+// ─── Save trade → Firebase ────────────────────────────────────────────────────
+function saveTrade() {
+  const entry  = parseFloat(document.getElementById('entry').value);
+  const exit   = parseFloat(document.getElementById('exit').value);
+  const shares = parseFloat(document.getElementById('shares').value);
+  const ticker = document.getElementById('ticker').value.toUpperCase().trim();
+
+  if (!ticker || !entry || !exit || !shares) {
+    alert('Please fill in ticker, entry, exit, and shares.');
+    return;
+  }
+
+  const pnl = direction === 'long'
+    ? (exit - entry) * shares
+    : (entry - exit) * shares;
+
+  const trade = {
+    ticker,
+    date:         document.getElementById('date').value,
+    time:         document.getElementById('time').value,
+    entry, exit, shares,
+    stop:         parseFloat(document.getElementById('stop').value) || null,
+    setup:        document.getElementById('setup').value,
+    direction,
+    pnl:          Math.round(pnl * 100) / 100,
+    planFollowed, mood,
+    reason:       document.getElementById('reason').value.trim(),
+    notes:        document.getElementById('notes').value.trim(),
+    savedAt:      Date.now()   // timestamp so Firebase sorts predictably
+  };
+
+  const btn = document.getElementById('save-trade-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  // Push to /trades — Firebase auto-generates a unique key
+  db.ref('trades').push(trade)
+    .then(() => {
+      // Clear form
+      ['entry','exit','shares','stop','reason','notes'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('setup').value = '';
+      document.getElementById('ticker').value = '';
+      selectDir('long'); selectPlan('yes'); selectMood('calm');
+      showToast('Trade saved to Firebase ✓');
+    })
+    .catch(err => {
+      alert('Firebase error: ' + err.message);
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'Save trade';
+    });
+}
+
+// ─── Delete trade from Firebase ───────────────────────────────────────────────
+function deleteTrade(firebaseKey) {
+  if (!confirm('Delete this trade?')) return;
+  db.ref('trades/' + firebaseKey).remove()
+    .catch(err => alert('Delete failed: ' + err.message));
+}
+
+// ─── Render history ───────────────────────────────────────────────────────────
+function renderHistory() {
+  const el         = document.getElementById('trade-list');
+  if (!el) return;
+  const search     = (document.getElementById('search')?.value || '').toUpperCase();
+  const planFilter = document.getElementById('filter-plan')?.value || '';
+
+  let filtered = [...trades]
+    .filter(t => (!search || t.ticker.includes(search)) && (!planFilter || t.planFollowed === planFilter))
+    .sort((a,b) => b.savedAt - a.savedAt);
+
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><strong>No trades yet</strong><p>Log your first trade to start building your edge.</p></div>';
+    return;
+  }
+
+  const moodEmoji = { calm:'😐', confident:'😊', fomo:'😤', revenge:'😠', anxious:'😰' };
+  el.innerHTML = filtered.map(t => `
+    <div class="trade-card">
+      <div class="trade-header">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="trade-ticker">${t.ticker}</span>
+          <span class="pnl ${t.pnl >= 0 ? 'pos' : 'neg'}">${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}</span>
+          <span class="badge ${t.pnl >= 0 ? 'win' : 'loss'}">${t.pnl >= 0 ? 'Win' : 'Loss'}</span>
+          <span class="badge plan-${t.planFollowed}">${t.planFollowed === 'yes' ? 'Plan followed' : t.planFollowed === 'no' ? 'Broke plan' : 'Partial'}</span>
+          ${t.mood ? `<span title="${t.mood}" style="font-size:16px">${moodEmoji[t.mood]||''}</span>` : ''}
+        </div>
+        <button class="delete-btn" onclick="deleteTrade('${t.firebaseKey}')" title="Delete">&#215;</button>
+      </div>
+      <div class="trade-meta">
+        <div class="meta">${t.date} ${t.time}</div>
+        <div class="meta">Direction: <span>${t.direction}</span></div>
+        <div class="meta">Entry: <span>$${t.entry}</span></div>
+        <div class="meta">Exit: <span>$${t.exit}</span></div>
+        <div class="meta">Shares: <span>${t.shares}</span></div>
+        ${t.stop ? `<div class="meta">Stop: <span>$${t.stop}</span></div>` : ''}
+        ${t.setup ? `<div class="meta">Setup: <span>${t.setup}</span></div>` : ''}
+      </div>
+      ${t.reason || t.notes ? `
+        <div class="trade-note">
+          ${t.reason ? `<div>${t.reason}</div>` : ''}
+          ${t.notes  ? `<div style="margin-top:6px;font-style:italic;color:var(--text3)">${t.notes}</div>` : ''}
+        </div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ─── Render stats ─────────────────────────────────────────────────────────────
+function renderStats() {
+  const el = document.getElementById('stat-grid');
+  if (!el) return;
+
+  if (!trades.length) {
+    el.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><strong>No trades yet</strong><p>Stats will appear once you log trades.</p></div>';
+    return;
+  }
+
+  const total    = trades.length;
+  const wins     = trades.filter(t => t.pnl > 0);
+  const losses   = trades.filter(t => t.pnl <= 0);
+  const totalPnl = trades.reduce((s,t) => s + t.pnl, 0);
+  const planYes  = trades.filter(t => t.planFollowed === 'yes').length;
+  const avgWin   = wins.length   ? wins.reduce((s,t)=>s+t.pnl,0)/wins.length   : 0;
+  const avgLoss  = losses.length ? losses.reduce((s,t)=>s+t.pnl,0)/losses.length : 0;
+  const rr       = avgLoss !== 0 ? Math.abs(avgWin/avgLoss) : 0;
+
+  el.innerHTML = `
+    <div class="stat-card"><div class="stat-label">Total trades</div><div class="stat-value">${total}</div></div>
+    <div class="stat-card"><div class="stat-label">Win rate</div><div class="stat-value">${Math.round(wins.length/total*100)}%</div></div>
+    <div class="stat-card"><div class="stat-label">Total P&L</div><div class="stat-value ${totalPnl>=0?'pos':'neg'}">${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(2)}</div></div>
+    <div class="stat-card"><div class="stat-label">Plan followed</div><div class="stat-value">${Math.round(planYes/total*100)}%</div></div>
+    <div class="stat-card"><div class="stat-label">Avg win</div><div class="stat-value pos">$${avgWin.toFixed(2)}</div></div>
+    <div class="stat-card"><div class="stat-label">Avg loss</div><div class="stat-value neg">$${Math.abs(avgLoss).toFixed(2)}</div></div>
+    <div class="stat-card"><div class="stat-label">Risk/reward</div><div class="stat-value">${rr.toFixed(2)}</div></div>
+    <div class="stat-card"><div class="stat-label">Largest win</div><div class="stat-value pos">$${wins.length ? Math.max(...wins.map(t=>t.pnl)).toFixed(2) : '0.00'}</div></div>
+  `;
+
+  const recent = [...trades].sort((a,b)=>b.savedAt-a.savedAt).slice(0,20).reverse();
+  document.getElementById('streak-bar').innerHTML = Array.from({length:20}, (_,i) => {
+    const t = recent[i];
+    return `<div class="streak-dot ${t ? (t.pnl>0?'win':'loss') : 'empty'}" title="${t ? t.ticker+' $'+t.pnl.toFixed(2) : 'no trade'}"></div>`;
+  }).join('');
+
+  const setups = {};
+  trades.filter(t=>t.setup).forEach(t => {
+    if (!setups[t.setup]) setups[t.setup] = { wins:0, total:0 };
+    setups[t.setup].total++;
+    if (t.pnl > 0) setups[t.setup].wins++;
+  });
+
+  if (Object.keys(setups).length) {
+    document.getElementById('setup-breakdown').style.display = 'block';
+    document.getElementById('setup-table').innerHTML = Object.entries(setups).map(([s,d]) => `
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid var(--border);font-size:13px">
+        <span>${s}</span>
+        <span style="color:var(--text2)">${d.wins}/${d.total} — <strong style="color:var(--text)">${Math.round(d.wins/d.total*100)}%</strong></span>
+      </div>
+    `).join('');
+  }
+}
+
+// ─── Save prep → Firebase ─────────────────────────────────────────────────────
+function savePrep() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const prep = {
+    date:      todayStr,
+    bias,
+    maxloss:   document.getElementById('maxloss').value,
+    watchlist: document.getElementById('watchlist').value.trim(),
+    levels:    document.getElementById('levels').value.trim(),
+    mental:    document.getElementById('mental').value.trim(),
+    savedAt:   Date.now()
+  };
+
+  const btn = document.getElementById('save-prep-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  // Use set (not push) so today's prep is always at /preps/YYYY-MM-DD
+  db.ref('preps/' + todayStr).set(prep)
+    .then(() => showToast('Prep saved to Firebase ✓'))
+    .catch(err => alert('Firebase error: ' + err.message))
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = "Save today's prep";
+    });
+}
+
+// ─── Render prep (from local mirror populated by onValue) ─────────────────────
+function renderPrep() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayPrep = preps[todayStr];
+  const el = document.getElementById('saved-prep');
+  if (!el) return;
+
+  if (todayPrep) {
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-title">Today's prep saved ✓</div>
+        <div class="trade-meta" style="margin-bottom:8px">
+          <div class="meta">Bias: <span>${todayPrep.bias}</span></div>
+          ${todayPrep.maxloss ? `<div class="meta">Max loss: <span>$${todayPrep.maxloss}</span></div>` : ''}
+        </div>
+        ${todayPrep.watchlist ? `<p style="font-size:13px;color:var(--text2);margin-bottom:6px">Watchlist: ${todayPrep.watchlist}</p>` : ''}
+        ${todayPrep.levels   ? `<p style="font-size:13px;color:var(--text2);margin-bottom:6px">${todayPrep.levels}</p>` : ''}
+        ${todayPrep.mental   ? `<p style="font-size:13px;color:var(--text3);font-style:italic">${todayPrep.mental}</p>` : ''}
+      </div>
+    `;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+// ─── Export CSV (from local mirror) ──────────────────────────────────────────
+function exportCSV() {
+  if (!trades.length) { alert('No trades to export.'); return; }
+  const headers = ['Date','Time','Ticker','Direction','Entry','Exit','Shares','Stop','P&L','Setup','Plan','Mood','Reason','Notes'];
+  const rows = trades.map(t => [
+    t.date, t.time, t.ticker, t.direction, t.entry, t.exit, t.shares,
+    t.stop||'', t.pnl, t.setup||'', t.planFollowed, t.mood||'',
+    '"'+(t.reason||'').replace(/"/g,'""')+'"',
+    '"'+(t.notes||'').replace(/"/g,'""')+'"'
+  ]);
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'trades_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.click();
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+</script>
+</body>
+</html>
